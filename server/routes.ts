@@ -1,5 +1,4 @@
 import express, { type Express, Request, Response } from "express";
-import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { createPostSchema, insertPlatformConnectionSchema, insertPostSchema, PlatformType, postStatus } from "@shared/schema";
 import { z } from "zod";
@@ -37,7 +36,7 @@ const upload = multer({
   }
 });
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express): Promise<void> {
   // put application routes here
   // prefix all routes with /api
 
@@ -357,8 +356,4 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Serve uploaded files
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-
-  const httpServer = createServer(app);
-
-  return httpServer;
 }
