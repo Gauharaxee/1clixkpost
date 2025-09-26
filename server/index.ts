@@ -61,40 +61,39 @@ app.use((req, res, next) => {
 
     // Use process.env.PORT for Cloud Run compatibility with fallback
     const port = parseInt(process.env.PORT || "5000", 10);
+    const isDevelopment = process.env.NODE_ENV === "development";
+    const isCloudRun = !!process.env.PORT; // Cloud Run sets PORT environment variable
 
-    // importantly only setup vite in development and after
-    // setting up all the other routes so the catch-all route
-    // doesn't interfere with the other routes
-    if (app.get("env") === "development") {
-      // Create a minimal server instance for Vite HMR in development
+    log(`Environment: ${process.env.NODE_ENV || 'unknown'}, Port: ${port}, Cloud Run: ${isCloudRun}`);
+
+    // Use production mode for Cloud Run deployment even if NODE_ENV=development
+    if (isDevelopment && !isCloudRun) {
+      // Local development with Vite HMR
       const server = createServer(app);
       await setupVite(app, server);
       server.listen(port, "0.0.0.0", () => {
-        log(`serving on port ${port}`);
+        log(`serving on port ${port} (development mode)`);
       });
     } else {
+      // Production mode or Cloud Run deployment
       serveStatic(app);
       const server = app.listen(port, "0.0.0.0", () => {
         log(`serving on port ${port} (production mode)`);
         log(`Health check available at http://0.0.0.0:${port}/health`);
+        log(`Server started successfully for Cloud Run`);
       });
 
       // Graceful shutdown for Cloud Run
-      process.on('SIGTERM', () => {
-        log('SIGTERM received, shutting down gracefully');
+      const shutdown = () => {
+        log('Shutdown signal received, closing server gracefully');
         server.close(() => {
-          log('Process terminated');
+          log('Server closed successfully');
           process.exit(0);
         });
-      });
+      };
 
-      process.on('SIGINT', () => {
-        log('SIGINT received, shutting down gracefully');
-        server.close(() => {
-          log('Process terminated');
-          process.exit(0);
-        });
-      });
+      process.on('SIGTERM', shutdown);
+      process.on('SIGINT', shutdown);
     }
   } catch (error) {
     log(`Failed to start server: ${error}`);
