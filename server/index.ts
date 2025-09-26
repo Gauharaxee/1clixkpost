@@ -41,6 +41,16 @@ app.use((req, res, next) => {
   try {
     await registerRoutes(app);
 
+    // Add health check endpoint for Cloud Run
+    app.get("/health", (req, res) => {
+      res.status(200).json({ status: "healthy", timestamp: new Date().toISOString() });
+    });
+
+    // Add root endpoint
+    app.get("/", (req, res) => {
+      res.redirect("/health");
+    });
+
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";
@@ -64,8 +74,26 @@ app.use((req, res, next) => {
       });
     } else {
       serveStatic(app);
-      app.listen(port, "0.0.0.0", () => {
-        log(`serving on port ${port}`);
+      const server = app.listen(port, "0.0.0.0", () => {
+        log(`serving on port ${port} (production mode)`);
+        log(`Health check available at http://0.0.0.0:${port}/health`);
+      });
+
+      // Graceful shutdown for Cloud Run
+      process.on('SIGTERM', () => {
+        log('SIGTERM received, shutting down gracefully');
+        server.close(() => {
+          log('Process terminated');
+          process.exit(0);
+        });
+      });
+
+      process.on('SIGINT', () => {
+        log('SIGINT received, shutting down gracefully');
+        server.close(() => {
+          log('Process terminated');
+          process.exit(0);
+        });
       });
     }
   } catch (error) {
