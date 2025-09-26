@@ -76,7 +76,27 @@ app.use((req, res, next) => {
       });
     } else {
       // Production mode or Cloud Run deployment
-      serveStatic(app);
+      try {
+        serveStatic(app);
+        log("Static assets loaded successfully");
+      } catch (error) {
+        log(`Warning: Static assets not available: ${error.message}`);
+        log("Server will continue without static assets but API endpoints will work");
+        
+        // Provide fallback for missing static assets
+        app.use("*", (req, res) => {
+          if (req.path.startsWith("/api") || req.path === "/health") {
+            // Let API routes and health check through
+            return;
+          }
+          res.status(503).json({ 
+            error: "Service temporarily unavailable", 
+            message: "Static assets not found. Server is running but frontend is not available.",
+            health: "/health"
+          });
+        });
+      }
+      
       const server = app.listen(port, "0.0.0.0", () => {
         log(`serving on port ${port} (production mode)`);
         log(`Health check available at http://0.0.0.0:${port}/health`);
