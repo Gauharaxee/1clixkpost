@@ -1,6 +1,8 @@
 import express, { type Express, Request, Response } from "express";
+import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { createPostSchema, insertPlatformConnectionSchema, insertPostSchema, PlatformType, postStatus } from "@shared/schema";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 import { z } from "zod";
 import multer from "multer";
 import path from "path";
@@ -36,29 +38,38 @@ const upload = multer({
   }
 });
 
-export async function registerRoutes(app: Express): Promise<void> {
-  // put application routes here
-  // prefix all routes with /api
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Auth middleware - setup auth first
+  await setupAuth(app);
 
-  // User authentication placeholder
-  app.get("/api/user", (req, res) => {
-    // In a real app, this would be based on the authenticated user
-    const mockUser = {
-      id: 1,
-      username: "testuser",
-      displayName: "Sarah Johnson",
-      avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330",
-      planType: "premium"
-    };
-    
-    res.json(mockUser);
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Legacy user endpoint for backward compatibility
+  app.get("/api/user", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
   });
 
   // Platform connections
-  app.get("/api/platform-connections", async (req, res) => {
+  app.get("/api/platform-connections", isAuthenticated, async (req: any, res) => {
     try {
-      // In a real app, userId would come from the authenticated user
-      const userId = 1;
+      const userId = req.user.claims.sub;
       const connections = await storage.getPlatformConnections(userId);
       res.json(connections);
     } catch (error) {
@@ -66,9 +77,13 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.post("/api/platform-connections", async (req, res) => {
+  app.post("/api/platform-connections", isAuthenticated, async (req: any, res) => {
     try {
-      const connectionData = insertPlatformConnectionSchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      const connectionData = insertPlatformConnectionSchema.parse({
+        ...req.body,
+        userId
+      });
       const connection = await storage.createPlatformConnection(connectionData);
       res.status(201).json(connection);
     } catch (error) {
@@ -80,7 +95,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.put("/api/platform-connections/:id", async (req, res) => {
+  app.put("/api/platform-connections/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const connectionData = insertPlatformConnectionSchema.partial().parse(req.body);
@@ -95,7 +110,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.delete("/api/platform-connections/:id", async (req, res) => {
+  app.delete("/api/platform-connections/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       await storage.deletePlatformConnection(id);
@@ -106,10 +121,9 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Posts
-  app.get("/api/posts", async (req, res) => {
+  app.get("/api/posts", isAuthenticated, async (req: any, res) => {
     try {
-      // In a real app, userId would come from the authenticated user
-      const userId = 1;
+      const userId = req.user.claims.sub;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
       const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
       
@@ -132,10 +146,9 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.get("/api/posts/recent", async (req, res) => {
+  app.get("/api/posts/recent", isAuthenticated, async (req: any, res) => {
     try {
-      // In a real app, userId would come from the authenticated user
-      const userId = 1;
+      const userId = req.user.claims.sub;
       const posts = await storage.getUserPosts(userId, 5, 0);
       
       // For each post, get its associated platforms
@@ -164,10 +177,9 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.get("/api/posts/scheduled", async (req, res) => {
+  app.get("/api/posts/scheduled", isAuthenticated, async (req: any, res) => {
     try {
-      // In a real app, userId would come from the authenticated user
-      const userId = 1;
+      const userId = req.user.claims.sub;
       const posts = await storage.getScheduledPosts(userId);
       
       // For each post, get its associated platforms
@@ -197,7 +209,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.get("/api/posts/:id", async (req, res) => {
+  app.get("/api/posts/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const post = await storage.getPost(id);
@@ -217,13 +229,12 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.post("/api/posts", async (req, res) => {
+  app.post("/api/posts", isAuthenticated, async (req: any, res) => {
     try {
       const postData = createPostSchema.parse(req.body);
-      const userId = 1; // In a real app, this would be the authenticated user's ID
+      const userId = req.user.claims.sub;
       
       const status = postData.status || (postData.scheduledAt ? "scheduled" : "published");
-      const publishedAt = status === "published" ? new Date() : null;
       
       // Create the post
       const post = await storage.createPost({
@@ -231,8 +242,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         content: postData.content,
         imageUrl: postData.imageUrl,
         status,
-        scheduledAt: postData.scheduledAt ? new Date(postData.scheduledAt) : null,
-        publishedAt
+        scheduledAt: postData.scheduledAt ? new Date(postData.scheduledAt) : null
       });
       
       // Create post platform entries
@@ -260,7 +270,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.put("/api/posts/:id", async (req, res) => {
+  app.put("/api/posts/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const postData = insertPostSchema.partial().parse(req.body);
@@ -275,7 +285,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.delete("/api/posts/:id", async (req, res) => {
+  app.delete("/api/posts/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       await storage.deletePost(id);
@@ -286,7 +296,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Image upload
-  app.post("/api/upload", upload.single("image"), (req, res) => {
+  app.post("/api/upload", isAuthenticated, upload.single("image"), (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -303,7 +313,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Analytics
-  app.get("/api/analytics/overview", (req, res) => {
+  app.get("/api/analytics/overview", isAuthenticated, (req, res) => {
     // In a real app, this would fetch analytics data from the database or third-party APIs
     const mockAnalytics = {
       totalPosts: 48,
@@ -337,7 +347,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     res.json(mockAnalytics);
   });
 
-  app.get("/api/analytics/chart-data", (req, res) => {
+  app.get("/api/analytics/chart-data", isAuthenticated, (req, res) => {
     // In a real app, this would generate chart data based on actual analytics
     const timeRange = req.query.timeRange || "30days";
     
@@ -356,4 +366,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   // Serve uploaded files
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
+  const httpServer = createServer(app);
+  return httpServer;
 }
