@@ -1,13 +1,29 @@
-import { pgTable, text, serial, integer, boolean, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { sql } from 'drizzle-orm';
+import { pgTable, text, serial, integer, boolean, jsonb, timestamp, varchar, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Session storage table for Replit Auth
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// User storage table for Replit Auth
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  displayName: text("display_name"),
-  avatar: text("avatar"),
+  id: varchar("id").primaryKey().notNull(),
+  email: varchar("email").unique(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  // Keep existing fields for backward compatibility
   planType: text("plan_type").default("free").notNull(),
 });
 
@@ -16,7 +32,7 @@ export type PlatformType = typeof platformTypes[number];
 
 export const platformConnections = pgTable("platform_connections", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => users.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
   platform: text("platform", { enum: platformTypes }).notNull(),
   accountName: text("account_name"),
   accountId: text("account_id"),
@@ -34,7 +50,7 @@ export type PostStatus = typeof postStatus[number];
 
 export const posts = pgTable("posts", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => users.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
   content: text("content").notNull(),
   imageUrl: text("image_url"),
   status: text("status", { enum: postStatus }).default("draft").notNull(),
@@ -54,44 +70,37 @@ export const postPlatforms = pgTable("post_platforms", {
   clicks: integer("clicks").default(0),
 });
 
-// Insert schemas
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-  displayName: true,
-  avatar: true,
+// Insert schemas for Replit Auth
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
-export const insertPlatformConnectionSchema = createInsertSchema(platformConnections).pick({
-  userId: true,
-  platform: true,
-  accountName: true,
-  accountId: true,
-  status: true,
-  token: true,
-  tokenSecret: true,
-  refreshToken: true,
-  expiresAt: true,
-  followers: true,
-  metadata: true,
+export const upsertUserSchema = createInsertSchema(users).omit({
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  id: z.string(),
 });
 
-export const insertPostSchema = createInsertSchema(posts).pick({
-  userId: true,
-  content: true,
-  imageUrl: true,
-  status: true,
-  scheduledAt: true,
+export const insertPlatformConnectionSchema = createInsertSchema(platformConnections).omit({
+  id: true,
 });
 
-export const insertPostPlatformSchema = createInsertSchema(postPlatforms).pick({
-  postId: true,
-  platform: true,
-  status: true,
+export const insertPostSchema = createInsertSchema(posts).omit({
+  id: true,
+  publishedAt: true,
+  createdAt: true,
+});
+
+export const insertPostPlatformSchema = createInsertSchema(postPlatforms).omit({
+  id: true,
 });
 
 // Types for insert operations
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type UpsertUser = z.infer<typeof upsertUserSchema>;
 export type InsertPlatformConnection = z.infer<typeof insertPlatformConnectionSchema>;
 export type InsertPost = z.infer<typeof insertPostSchema>;
 export type InsertPostPlatform = z.infer<typeof insertPostPlatformSchema>;
