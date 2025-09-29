@@ -79,8 +79,8 @@ app.use((req, res, next) => {
       try {
         serveStatic(app);
         log("Static assets loaded successfully");
-      } catch (error) {
-        log(`Warning: Static assets not available: ${error.message}`);
+      } catch (error: any) {
+        log(`Warning: Static assets not available: ${error?.message || error}`);
         log("Server will continue without static assets but API endpoints will work");
         
         // Provide fallback for missing static assets
