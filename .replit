@@ -24,9 +24,6 @@ localPort = 24678
 localPort = 34025
 
 [[ports]]
-localPort = 40469
-
-[[ports]]
 localPort = 42927
 
 [workflows]
