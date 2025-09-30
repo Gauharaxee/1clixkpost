@@ -28,6 +28,10 @@ externalPort = 3000
 localPort = 34025
 
 [[ports]]
+localPort = 35529
+externalPort = 3002
+
+[[ports]]
 localPort = 37821
 externalPort = 3001
 
@@ -65,7 +69,7 @@ task = "workflow.run"
 args = "Start application"
 
 [agent]
-integrations = ["javascript_database:1.0.0"]
+integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:1.0.0"]
 
 [objectStorage]
-defaultBucketID = "replit-objstore-b0a6844f-3448-45a0-b53e-b12a0d4581b6"
+defaultBucketID = "replit-objstore-0b6536a1-e4fd-42e5-ae88-9542a8acc72b"
