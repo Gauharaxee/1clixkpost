@@ -46,11 +46,6 @@ app.use((req, res, next) => {
       res.status(200).json({ status: "healthy", timestamp: new Date().toISOString() });
     });
 
-    // Add root endpoint
-    app.get("/", (req, res) => {
-      res.redirect("/health");
-    });
-
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";
@@ -84,11 +79,39 @@ app.use((req, res, next) => {
         log("Server will continue without static assets but API endpoints will work");
         
         // Provide fallback for missing static assets
-        app.use("*", (req, res) => {
+        app.use("*", (req, res, next) => {
           if (req.path.startsWith("/api") || req.path === "/health") {
             // Let API routes and health check through
-            return;
+            return next();
           }
+          
+          // For root path, serve a basic HTML page explaining the situation
+          if (req.path === "/") {
+            return res.status(200).type("html").send(`
+              <!DOCTYPE html>
+              <html>
+                <head>
+                  <title>Service Unavailable</title>
+                  <meta charset="UTF-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <style>
+                    body { font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 100px auto; padding: 20px; text-align: center; }
+                    h1 { color: #333; }
+                    p { color: #666; line-height: 1.6; }
+                    a { color: #0066cc; text-decoration: none; }
+                    a:hover { text-decoration: underline; }
+                  </style>
+                </head>
+                <body>
+                  <h1>Service Starting</h1>
+                  <p>The application is starting up. Static assets are being prepared.</p>
+                  <p>If this message persists, please check the server logs or visit the <a href="/health">health endpoint</a>.</p>
+                </body>
+              </html>
+            `);
+          }
+          
+          // For all other routes, return a helpful error message
           res.status(503).json({ 
             error: "Service temporarily unavailable", 
             message: "Static assets not found. Server is running but frontend is not available.",
