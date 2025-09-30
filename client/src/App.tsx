@@ -9,16 +9,26 @@ import CreatePostPage from "@/pages/create-post";
 import ScheduledPostsPage from "@/pages/scheduled-posts";
 import AnalyticsPage from "@/pages/analytics";
 import HelpPage from "@/pages/help";
+import LandingPage from "@/pages/landing";
+import { useAuth } from "@/hooks/useAuth";
 
+// Referenced from blueprint:javascript_log_in_with_replit
 function Router() {
+  const { isAuthenticated, isLoading } = useAuth();
+
   return (
     <Switch>
-      <Route path="/" component={DashboardPage} />
-      <Route path="/create-post" component={CreatePostPage} />
-      <Route path="/scheduled-posts" component={ScheduledPostsPage} />
-      <Route path="/analytics" component={AnalyticsPage} />
-      <Route path="/help" component={HelpPage} />
-      {/* Fallback to 404 */}
+      {isLoading || !isAuthenticated ? (
+        <Route path="/" component={LandingPage} />
+      ) : (
+        <>
+          <Route path="/" component={DashboardPage} />
+          <Route path="/create-post" component={CreatePostPage} />
+          <Route path="/scheduled-posts" component={ScheduledPostsPage} />
+          <Route path="/analytics" component={AnalyticsPage} />
+          <Route path="/help" component={HelpPage} />
+        </>
+      )}
       <Route component={NotFound} />
     </Switch>
   );

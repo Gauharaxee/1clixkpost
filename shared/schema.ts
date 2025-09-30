@@ -1,14 +1,31 @@
-import { pgTable, text, serial, integer, boolean, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, jsonb, timestamp, varchar, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { sql } from "drizzle-orm";
 
+// Session storage table for Replit Auth
+// Referenced from blueprint:javascript_log_in_with_replit
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// User storage table for Replit Auth
+// Referenced from blueprint:javascript_log_in_with_replit
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  displayName: text("display_name"),
-  avatar: text("avatar"),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email").unique(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
   planType: text("plan_type").default("free").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const platformTypes = ["meta", "twitter", "linkedin", "google"] as const;
@@ -16,7 +33,7 @@ export type PlatformType = typeof platformTypes[number];
 
 export const platformConnections = pgTable("platform_connections", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => users.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
   platform: text("platform", { enum: platformTypes }).notNull(),
   accountName: text("account_name"),
   accountId: text("account_id"),
@@ -34,7 +51,7 @@ export type PostStatus = typeof postStatus[number];
 
 export const posts = pgTable("posts", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => users.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
   content: text("content").notNull(),
   imageUrl: text("image_url"),
   status: text("status", { enum: postStatus }).default("draft").notNull(),
@@ -55,12 +72,19 @@ export const postPlatforms = pgTable("post_platforms", {
 });
 
 // Insert schemas
+// User insert/upsert schema for Replit Auth
+// Referenced from blueprint:javascript_log_in_with_replit
 export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-  displayName: true,
-  avatar: true,
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  profileImageUrl: true,
+  planType: true,
 });
+
+export const upsertUserSchema = insertUserSchema.partial().required({ id: true });
+export type UpsertUser = z.infer<typeof upsertUserSchema>;
 
 export const insertPlatformConnectionSchema = createInsertSchema(platformConnections).pick({
   userId: true,
