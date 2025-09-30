@@ -82,6 +82,7 @@ export const insertPostSchema = createInsertSchema(posts).pick({
   imageUrl: true,
   status: true,
   scheduledAt: true,
+  publishedAt: true,
 });
 
 export const insertPostPlatformSchema = createInsertSchema(postPlatforms).pick({
