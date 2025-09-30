@@ -7,7 +7,7 @@ import { PostTable } from "@/components/dashboard/post-table";
 import { ScheduleCard } from "@/components/dashboard/schedule-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChartData, PlatformStats, PostTableItem, ScheduledPost } from "@/lib/types";
+import { ChartData, PlatformStats, PostTableItem, ScheduledPost, AnalyticsOverview } from "@/lib/types";
 import { useState } from "react";
 
 export default function DashboardPage() {
@@ -17,7 +17,7 @@ export default function DashboardPage() {
   });
 
   // Analytics overview query
-  const { data: analyticsData, isLoading: isLoadingAnalytics } = useQuery({
+  const { data: analyticsData, isLoading: isLoadingAnalytics } = useQuery<AnalyticsOverview>({
     queryKey: ["/api/analytics/overview"],
   });
 
