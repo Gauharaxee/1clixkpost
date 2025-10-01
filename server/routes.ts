@@ -7,6 +7,7 @@ import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { buildAuthorizationUrl, exchangeCodeForToken, savePlatformConnection } from "./oauth";
 
 // Set up file upload with multer
 const upload = multer({
@@ -41,6 +42,48 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Referenced from blueprint:javascript_log_in_with_replit
   // Setup authentication
   await setupAuth(app);
+
+  // OAuth routes for platform connections
+  app.get("/api/oauth/:platform", isAuthenticated, (req: any, res) => {
+    const { platform } = req.params;
+    const userId = req.user.claims.sub;
+    
+    // Store user ID in session state for callback
+    const state = Buffer.from(JSON.stringify({ userId, platform })).toString('base64');
+    
+    try {
+      const authUrl = buildAuthorizationUrl(platform, state);
+      res.redirect(authUrl);
+    } catch (error) {
+      res.status(400).json({ message: "Invalid platform" });
+    }
+  });
+
+  app.get("/api/oauth/:platform/callback", async (req: any, res) => {
+    const { platform } = req.params;
+    const { code, state } = req.query;
+
+    if (!code || !state) {
+      return res.redirect("/?error=oauth_failed");
+    }
+
+    try {
+      // Decode state to get user ID
+      const { userId } = JSON.parse(Buffer.from(state as string, 'base64').toString());
+
+      // Exchange code for token
+      const { accessToken, refreshToken, expiresIn } = await exchangeCodeForToken(platform, code as string);
+
+      // Save connection to database
+      await savePlatformConnection(userId, platform, accessToken, refreshToken, expiresIn);
+
+      // Redirect to platform connections page
+      res.redirect("/platform-connections?success=true");
+    } catch (error) {
+      console.error("OAuth callback error:", error);
+      res.redirect("/platform-connections?error=connection_failed");
+    }
+  });
 
   // Auth route to get current user
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
