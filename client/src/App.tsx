@@ -9,6 +9,7 @@ import CreatePostPage from "@/pages/create-post";
 import ScheduledPostsPage from "@/pages/scheduled-posts";
 import AnalyticsPage from "@/pages/analytics";
 import HelpPage from "@/pages/help";
+import PlatformConnectionsPage from "@/pages/platform-connections";
 import LandingPage from "@/pages/landing";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -26,6 +27,7 @@ function Router() {
           <Route path="/create-post" component={CreatePostPage} />
           <Route path="/scheduled-posts" component={ScheduledPostsPage} />
           <Route path="/analytics" component={AnalyticsPage} />
+          <Route path="/platform-connections" component={PlatformConnectionsPage} />
           <Route path="/help" component={HelpPage} />
         </>
       )}

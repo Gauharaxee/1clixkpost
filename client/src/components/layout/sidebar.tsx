@@ -9,7 +9,8 @@ import {
   HelpCircle,
   ChevronDown,
   LogOut,
-  Settings
+  Settings,
+  Link2
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
@@ -53,6 +54,11 @@ export function Sidebar({ className, isMobileMenuOpen, closeMobileMenu }: Sideba
       href: "/scheduled-posts",
       label: "Schedule",
       icon: Calendar,
+    },
+    {
+      href: "/platform-connections",
+      label: "Platforms",
+      icon: Link2,
     },
     {
       href: "/analytics",
