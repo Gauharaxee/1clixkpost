@@ -1,4 +1,4 @@
-import { users, type User, type UpsertUser, platformConnections, type PlatformConnection, type InsertPlatformConnection, posts, type Post, type InsertPost, postPlatforms, type PostPlatform, type InsertPostPlatform, apiCredentials, type ApiCredential, type InsertApiCredential } from "@shared/schema";
+import { users, type User, type UpsertUser, platformConnections, type PlatformConnection, type InsertPlatformConnection, posts, type Post, type InsertPost, postPlatforms, type PostPlatform, type InsertPostPlatform, apiCredentials, type ApiCredential, type InsertApiCredential, botCredentials, type BotCredential, type InsertBotCredential } from "@shared/schema";
 
 // modify the interface with any CRUD methods
 // you might need
@@ -34,6 +34,11 @@ export interface IStorage {
   getApiCredentials(userId: string): Promise<ApiCredential[]>;
   getApiCredentialForPlatform(userId: string, platform: string): Promise<ApiCredential | undefined>;
   upsertApiCredential(credential: InsertApiCredential): Promise<ApiCredential>;
+  
+  // Bot credentials methods
+  getBotCredentials(userId?: string): Promise<BotCredential[]>;
+  getBotCredentialForType(userId: string, botType: string): Promise<BotCredential | undefined>;
+  upsertBotCredential(credential: InsertBotCredential): Promise<BotCredential>;
 }
 
 export class MemStorage implements IStorage {
@@ -42,11 +47,13 @@ export class MemStorage implements IStorage {
   private posts: Map<number, Post>;
   private postPlatforms: Map<number, PostPlatform>;
   private apiCredentials: Map<number, ApiCredential>;
+  private botCredentials: Map<number, BotCredential>;
   
   private platformConnectionId: number;
   private postId: number;
   private postPlatformId: number;
   private apiCredentialId: number;
+  private botCredentialId: number;
 
   constructor() {
     this.users = new Map();
@@ -54,11 +61,13 @@ export class MemStorage implements IStorage {
     this.posts = new Map();
     this.postPlatforms = new Map();
     this.apiCredentials = new Map();
+    this.botCredentials = new Map();
     
     this.platformConnectionId = 1;
     this.postId = 1;
     this.postPlatformId = 1;
     this.apiCredentialId = 1;
+    this.botCredentialId = 1;
   }
 
   // User methods for Replit Auth
@@ -275,6 +284,55 @@ export class MemStorage implements IStorage {
         updatedAt: now,
       };
       this.apiCredentials.set(id, newCredential);
+      return newCredential;
+    }
+  }
+  
+  // Bot credentials methods
+  async getBotCredentials(userId?: string): Promise<BotCredential[]> {
+    if (!userId) {
+      // Return all bot credentials (for webhook handlers)
+      return Array.from(this.botCredentials.values());
+    }
+    return Array.from(this.botCredentials.values())
+      .filter((credential) => credential.userId === userId);
+  }
+  
+  async getBotCredentialForType(userId: string, botType: string): Promise<BotCredential | undefined> {
+    return Array.from(this.botCredentials.values())
+      .find((credential) => credential.userId === userId && credential.botType === botType);
+  }
+  
+  async upsertBotCredential(credentialData: InsertBotCredential): Promise<BotCredential> {
+    const existing = Array.from(this.botCredentials.entries())
+      .find(([_, cred]) => cred.userId === credentialData.userId && cred.botType === credentialData.botType);
+    
+    const now = new Date();
+    
+    if (existing) {
+      const [id, existingCred] = existing;
+      const updated: BotCredential = {
+        ...existingCred,
+        botToken: credentialData.botToken ?? null,
+        signingSecret: credentialData.signingSecret ?? null,
+        isActive: credentialData.isActive ?? true,
+        updatedAt: now,
+      };
+      this.botCredentials.set(id, updated);
+      return updated;
+    } else {
+      const id = this.botCredentialId++;
+      const newCredential: BotCredential = {
+        id,
+        userId: credentialData.userId,
+        botType: credentialData.botType,
+        botToken: credentialData.botToken ?? null,
+        signingSecret: credentialData.signingSecret ?? null,
+        isActive: credentialData.isActive ?? true,
+        createdAt: now,
+        updatedAt: now,
+      };
+      this.botCredentials.set(id, newCredential);
       return newCredential;
     }
   }

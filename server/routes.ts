@@ -1,6 +1,6 @@
 import express, { type Express, Request, Response } from "express";
 import { storage } from "./storage";
-import { createPostSchema, insertPlatformConnectionSchema, insertPostSchema, insertApiCredentialSchema, PlatformType, postStatus } from "@shared/schema";
+import { createPostSchema, insertPlatformConnectionSchema, insertPostSchema, insertApiCredentialSchema, insertBotCredentialSchema, PlatformType, postStatus } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import path from "path";
@@ -8,6 +8,7 @@ import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { buildAuthorizationUrl, exchangeCodeForToken, savePlatformConnection } from "./oauth";
+import { initializeTelegramBot, initializeSlackBot, handleSlackCommand, stopTelegramBot, stopSlackBot } from "./bots";
 
 // Set up file upload with multer
 const upload = multer({
@@ -184,6 +185,125 @@ export async function registerRoutes(app: Express): Promise<void> {
       } else {
         res.status(500).json({ message: "Failed to save credentials" });
       }
+    }
+  });
+
+  // Bot Credentials
+  app.get("/api/settings/bots", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const bots = await storage.getBotCredentials(userId);
+      // Don't send the actual tokens to the frontend
+      const sanitized = bots.map(bot => ({
+        id: bot.id,
+        botType: bot.botType,
+        botToken: bot.botToken ? "••••••••" : null,
+        signingSecret: bot.signingSecret ? "••••••••" : null,
+        isActive: bot.isActive,
+      }));
+      res.json(sanitized);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get bot credentials" });
+    }
+  });
+
+  app.post("/api/settings/bots", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const botData = insertBotCredentialSchema.parse({ ...req.body, userId });
+      const bot = await storage.upsertBotCredential(botData);
+      
+      // Initialize the bot
+      if (bot.isActive && bot.botToken) {
+        if (bot.botType === "telegram") {
+          await initializeTelegramBot(userId, bot.botToken);
+        } else if (bot.botType === "slack") {
+          await initializeSlackBot(userId, bot.botToken);
+        }
+      }
+      
+      // Don't send the actual tokens back
+      res.status(201).json({
+        id: bot.id,
+        botType: bot.botType,
+        botToken: bot.botToken ? "••••••••" : null,
+        signingSecret: bot.signingSecret ? "••••••••" : null,
+        isActive: bot.isActive,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid bot data", errors: error.errors });
+      } else {
+        console.error("Error saving bot credentials:", error);
+        res.status(500).json({ message: "Failed to save bot credentials" });
+      }
+    }
+  });
+
+  app.delete("/api/settings/bots/:botType", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { botType } = req.params;
+      
+      // Stop the bot
+      if (botType === "telegram") {
+        await stopTelegramBot(userId);
+      } else if (botType === "slack") {
+        await stopSlackBot(userId);
+      }
+      
+      // Deactivate the bot credential in storage
+      const existingBot = await storage.getBotCredentialForType(userId, botType);
+      if (existingBot) {
+        await storage.upsertBotCredential({
+          userId,
+          botType,
+          botToken: null,
+          signingSecret: null,
+          isActive: false,
+        });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to stop bot" });
+    }
+  });
+
+  // Slack Webhooks
+  // TODO: Add Slack signature verification for security
+  // See: https://api.slack.com/authentication/verifying-requests-from-slack
+  app.post("/api/webhooks/slack/commands", express.urlencoded({ extended: true }), async (req, res) => {
+    try {
+      const { command, text, user_id, team_id, response_url } = req.body;
+      
+      // TODO: Verify Slack request signature using signing secret
+      // This prevents unauthorized requests from spoofing Slack commands
+      
+      // Find user by team_id (Slack workspace) from bot credentials
+      // In production, you'd store a mapping between Slack team/user IDs and your user IDs
+      const allBotCreds = await storage.getBotCredentials(); // Get all users' bot credentials
+      const slackBot = allBotCreds.find(
+        (cred) => cred.botType === "slack" && cred.isActive
+      );
+      
+      if (!slackBot) {
+        return res.json({
+          response_type: "ephemeral",
+          text: "Bot not configured. Please set up the Slack bot in your settings.",
+        });
+      }
+      
+      const userId = slackBot.userId;
+      const response = await handleSlackCommand(userId, command, text, response_url);
+      
+      res.json({
+        response_type: "in_channel",
+        text: response,
+      });
+    } catch (error) {
+      console.error("Error handling Slack command:", error);
+      res.status(500).json({ text: "An error occurred processing your command." });
     }
   });
 

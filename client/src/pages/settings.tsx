@@ -9,13 +9,22 @@ import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, AlertTriangle, Eye, EyeOff } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { SiFacebook, SiX, SiLinkedin, SiGoogle } from "react-icons/si";
+import { SiFacebook, SiX, SiLinkedin, SiGoogle, SiSlack, SiTelegram } from "react-icons/si";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type ApiCredential = {
   id: number;
   platform: string;
   clientId: string | null;
   clientSecret: string | null;
+};
+
+type BotCredential = {
+  id: number;
+  botType: string;
+  botToken: string | null;
+  signingSecret: string | null;
+  isActive: boolean;
 };
 
 const platformConfig: Record<string, { name: string; icon: any; docsUrl: string }> = {
@@ -41,13 +50,33 @@ const platformConfig: Record<string, { name: string; icon: any; docsUrl: string 
   },
 };
 
+const botConfig: Record<string, { name: string; icon: any; docsUrl: string; requiresSigningSecret: boolean }> = {
+  slack: {
+    name: "Slack",
+    icon: SiSlack,
+    docsUrl: "https://api.slack.com/apps",
+    requiresSigningSecret: true,
+  },
+  telegram: {
+    name: "Telegram",
+    icon: SiTelegram,
+    docsUrl: "https://core.telegram.org/bots#botfather",
+    requiresSigningSecret: false,
+  },
+};
+
 export default function SettingsPage() {
   const { toast } = useToast();
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [formData, setFormData] = useState<Record<string, { clientId: string; clientSecret: string }>>({});
+  const [botFormData, setBotFormData] = useState<Record<string, { botToken: string; signingSecret: string; isActive: boolean }>>({});
 
   const { data: credentials, isLoading } = useQuery<ApiCredential[]>({
     queryKey: ["/api/settings/credentials"],
+  });
+
+  const { data: bots, isLoading: isLoadingBots } = useQuery<BotCredential[]>({
+    queryKey: ["/api/settings/bots"],
   });
 
   const saveMutation = useMutation({
@@ -108,13 +137,68 @@ export default function SettingsPage() {
     }));
   };
 
+  const saveBotMutation = useMutation({
+    mutationFn: async ({ botType, botToken, signingSecret, isActive }: { botType: string; botToken: string; signingSecret?: string; isActive: boolean }) => {
+      const response = await fetch("/api/settings/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ botType, botToken, signingSecret, isActive }),
+      });
+      if (!response.ok) throw new Error("Failed to save bot credentials");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings/bots"] });
+      toast({
+        title: "Success",
+        description: "Bot credentials saved successfully. Your bot is now active!",
+      });
+      setBotFormData({});
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to save bot credentials",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleBotSubmit = (botType: string) => {
+    const data = botFormData[botType];
+    if (!data?.botToken) {
+      toast({
+        title: "Error",
+        description: "Please provide a bot token",
+        variant: "destructive",
+      });
+      return;
+    }
+    saveBotMutation.mutate({ botType, botToken: data.botToken, signingSecret: data.signingSecret, isActive: data.isActive ?? true });
+  };
+
+  const handleBotInputChange = (botType: string, field: "botToken" | "signingSecret" | "isActive", value: string | boolean) => {
+    setBotFormData((prev) => ({
+      ...prev,
+      [botType]: {
+        ...prev[botType],
+        [field]: value,
+      } as any,
+    }));
+  };
+
   const getCredentialForPlatform = (platform: string) => {
     return credentials?.find((c) => c.platform === platform);
   };
 
-  if (isLoading) {
+  const getBotForType = (botType: string) => {
+    return bots?.find((b) => b.botType === botType);
+  };
+
+  if (isLoading || isLoadingBots) {
     return (
-      <MainLayout title="API Settings">
+      <MainLayout title="Settings">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
@@ -123,12 +207,12 @@ export default function SettingsPage() {
   }
 
   return (
-    <MainLayout title="API Settings">
+    <MainLayout title="Settings">
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">API Settings</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
           <p className="text-muted-foreground mt-2">
-            Configure API credentials for social media platforms
+            Configure API credentials and manage your bots
           </p>
         </div>
 
@@ -141,7 +225,14 @@ export default function SettingsPage() {
           </AlertDescription>
         </Alert>
 
-        <div className="grid gap-6">
+        <Tabs defaultValue="api" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="api" data-testid="tab-api-credentials">API Credentials</TabsTrigger>
+            <TabsTrigger value="bots" data-testid="tab-bots">Bot Configuration</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="api" className="mt-6">
+            <div className="grid gap-6">
           {Object.entries(platformConfig).map(([key, config]) => {
             const credential = getCredentialForPlatform(key);
             const Icon = config.icon;
@@ -234,7 +325,134 @@ export default function SettingsPage() {
               </Card>
             );
           })}
-        </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="bots" className="mt-6">
+            <div className="grid gap-6">
+              {Object.entries(botConfig).map(([key, config]) => {
+                const bot = getBotForType(key);
+                const Icon = config.icon;
+                const formValue = botFormData[key];
+                const hasBot = bot && bot.botToken;
+
+                return (
+                  <Card key={key} data-testid={`card-bot-${key}`}>
+                    <CardHeader>
+                      <div className="flex items-center gap-3">
+                        <Icon className="h-6 w-6" />
+                        <div>
+                          <CardTitle>{config.name} Bot</CardTitle>
+                          <CardDescription>
+                            Configure your {config.name} bot. Get your bot token from{" "}
+                            <a
+                              href={config.docsUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline"
+                            >
+                              {config.name} Developer Portal
+                            </a>
+                          </CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {hasBot && bot.isActive && (
+                        <Alert className="bg-green-50 border-green-200">
+                          <AlertDescription className="text-green-800">
+                            ✓ Bot is active and running
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor={`${key}-bot-token`}>Bot Token</Label>
+                          <div className="relative">
+                            <Input
+                              id={`${key}-bot-token`}
+                              type={showSecrets[`${key}-bot`] ? "text" : "password"}
+                              placeholder={hasBot ? "••••••••••••••••" : "Enter Bot Token"}
+                              value={formValue?.botToken || ""}
+                              onChange={(e) => handleBotInputChange(key, "botToken", e.target.value)}
+                              className="pr-10"
+                              data-testid={`input-bot-token-${key}`}
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="absolute right-0 top-0 h-full"
+                              onClick={() => setShowSecrets(prev => ({ ...prev, [`${key}-bot`]: !prev[`${key}-bot`] }))}
+                            >
+                              {showSecrets[`${key}-bot`] ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {config.requiresSigningSecret && (
+                          <div className="space-y-2">
+                            <Label htmlFor={`${key}-signing-secret`}>Signing Secret (Optional for Slack)</Label>
+                            <Input
+                              id={`${key}-signing-secret`}
+                              type="password"
+                              placeholder={hasBot ? "••••••••••••••••" : "Enter Signing Secret"}
+                              value={formValue?.signingSecret || ""}
+                              onChange={(e) => handleBotInputChange(key, "signingSecret", e.target.value)}
+                              data-testid={`input-signing-secret-${key}`}
+                            />
+                          </div>
+                        )}
+
+                        <Button
+                          onClick={() => handleBotSubmit(key)}
+                          disabled={saveBotMutation.isPending || !formValue?.botToken}
+                          className="w-full"
+                          data-testid={`button-save-bot-${key}`}
+                        >
+                          {saveBotMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : null}
+                          {hasBot ? "Update Bot" : "Activate Bot"}
+                        </Button>
+                      </div>
+
+                      {key === "telegram" && (
+                        <Alert>
+                          <AlertDescription>
+                            <strong>Available Commands:</strong><br/>
+                            /start - Start the bot<br/>
+                            /create &lt;content&gt; - Create a new post<br/>
+                            /list - View your recent posts<br/>
+                            /connections - Check connected platforms<br/>
+                            /help - Show available commands
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
+                      {key === "slack" && (
+                        <Alert>
+                          <AlertDescription>
+                            <strong>Available Commands:</strong><br/>
+                            /postmaster-create &lt;content&gt; - Create a new post<br/>
+                            /postmaster-list - View your recent posts<br/>
+                            /postmaster-connections - Check connected platforms<br/>
+                            /postmaster-help - Show available commands
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </MainLayout>
   );
