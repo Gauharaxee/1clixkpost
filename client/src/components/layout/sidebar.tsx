@@ -66,6 +66,11 @@ export function Sidebar({ className, isMobileMenuOpen, closeMobileMenu }: Sideba
       icon: BarChart2,
     },
     {
+      href: "/settings",
+      label: "Settings",
+      icon: Settings,
+    },
+    {
       href: "/help",
       label: "Help & Support",
       icon: HelpCircle,
