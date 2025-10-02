@@ -1,4 +1,4 @@
-import { users, type User, type UpsertUser, platformConnections, type PlatformConnection, type InsertPlatformConnection, posts, type Post, type InsertPost, postPlatforms, type PostPlatform, type InsertPostPlatform } from "@shared/schema";
+import { users, type User, type UpsertUser, platformConnections, type PlatformConnection, type InsertPlatformConnection, posts, type Post, type InsertPost, postPlatforms, type PostPlatform, type InsertPostPlatform, apiCredentials, type ApiCredential, type InsertApiCredential } from "@shared/schema";
 
 // modify the interface with any CRUD methods
 // you might need
@@ -29,6 +29,11 @@ export interface IStorage {
   createPostPlatform(postPlatform: InsertPostPlatform): Promise<PostPlatform>;
   updatePostPlatform(id: number, data: Partial<InsertPostPlatform>): Promise<PostPlatform>;
   deletePostPlatform(id: number): Promise<void>;
+  
+  // API credentials methods
+  getApiCredentials(userId: string): Promise<ApiCredential[]>;
+  getApiCredentialForPlatform(userId: string, platform: string): Promise<ApiCredential | undefined>;
+  upsertApiCredential(credential: InsertApiCredential): Promise<ApiCredential>;
 }
 
 export class MemStorage implements IStorage {
@@ -36,20 +41,24 @@ export class MemStorage implements IStorage {
   private platformConnections: Map<number, PlatformConnection>;
   private posts: Map<number, Post>;
   private postPlatforms: Map<number, PostPlatform>;
+  private apiCredentials: Map<number, ApiCredential>;
   
   private platformConnectionId: number;
   private postId: number;
   private postPlatformId: number;
+  private apiCredentialId: number;
 
   constructor() {
     this.users = new Map();
     this.platformConnections = new Map();
     this.posts = new Map();
     this.postPlatforms = new Map();
+    this.apiCredentials = new Map();
     
     this.platformConnectionId = 1;
     this.postId = 1;
     this.postPlatformId = 1;
+    this.apiCredentialId = 1;
   }
 
   // User methods for Replit Auth
@@ -225,6 +234,49 @@ export class MemStorage implements IStorage {
   
   async deletePostPlatform(id: number): Promise<void> {
     this.postPlatforms.delete(id);
+  }
+  
+  // API credentials methods
+  async getApiCredentials(userId: string): Promise<ApiCredential[]> {
+    return Array.from(this.apiCredentials.values())
+      .filter((credential) => credential.userId === userId);
+  }
+  
+  async getApiCredentialForPlatform(userId: string, platform: string): Promise<ApiCredential | undefined> {
+    return Array.from(this.apiCredentials.values())
+      .find((credential) => credential.userId === userId && credential.platform === platform);
+  }
+  
+  async upsertApiCredential(credentialData: InsertApiCredential): Promise<ApiCredential> {
+    const existing = Array.from(this.apiCredentials.entries())
+      .find(([_, cred]) => cred.userId === credentialData.userId && cred.platform === credentialData.platform);
+    
+    const now = new Date();
+    
+    if (existing) {
+      const [id, existingCred] = existing;
+      const updated: ApiCredential = {
+        ...existingCred,
+        clientId: credentialData.clientId ?? null,
+        clientSecret: credentialData.clientSecret ?? null,
+        updatedAt: now,
+      };
+      this.apiCredentials.set(id, updated);
+      return updated;
+    } else {
+      const id = this.apiCredentialId++;
+      const newCredential: ApiCredential = {
+        id,
+        userId: credentialData.userId,
+        platform: credentialData.platform,
+        clientId: credentialData.clientId ?? null,
+        clientSecret: credentialData.clientSecret ?? null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      this.apiCredentials.set(id, newCredential);
+      return newCredential;
+    }
   }
 }
 
