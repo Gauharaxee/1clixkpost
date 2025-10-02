@@ -71,6 +71,16 @@ export const postPlatforms = pgTable("post_platforms", {
   clicks: integer("clicks").default(0),
 });
 
+export const apiCredentials = pgTable("api_credentials", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  platform: text("platform", { enum: platformTypes }).notNull(),
+  clientId: text("client_id"),
+  clientSecret: text("client_secret"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Insert schemas
 // User insert/upsert schema for Replit Auth
 // Referenced from blueprint:javascript_log_in_with_replit
@@ -115,17 +125,26 @@ export const insertPostPlatformSchema = createInsertSchema(postPlatforms).pick({
   status: true,
 });
 
+export const insertApiCredentialSchema = createInsertSchema(apiCredentials).pick({
+  userId: true,
+  platform: true,
+  clientId: true,
+  clientSecret: true,
+});
+
 // Types for insert operations
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertPlatformConnection = z.infer<typeof insertPlatformConnectionSchema>;
 export type InsertPost = z.infer<typeof insertPostSchema>;
 export type InsertPostPlatform = z.infer<typeof insertPostPlatformSchema>;
+export type InsertApiCredential = z.infer<typeof insertApiCredentialSchema>;
 
 // Types for select operations
 export type User = typeof users.$inferSelect;
 export type PlatformConnection = typeof platformConnections.$inferSelect;
 export type Post = typeof posts.$inferSelect;
 export type PostPlatform = typeof postPlatforms.$inferSelect;
+export type ApiCredential = typeof apiCredentials.$inferSelect;
 
 // Extended types for API responses
 export const createPostSchema = z.object({
