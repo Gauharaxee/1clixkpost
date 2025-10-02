@@ -1,6 +1,6 @@
 import express, { type Express, Request, Response } from "express";
 import { storage } from "./storage";
-import { createPostSchema, insertPlatformConnectionSchema, insertPostSchema, PlatformType, postStatus } from "@shared/schema";
+import { createPostSchema, insertPlatformConnectionSchema, insertPostSchema, insertApiCredentialSchema, PlatformType, postStatus } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import path from "path";
@@ -44,7 +44,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   await setupAuth(app);
 
   // OAuth routes for platform connections
-  app.get("/api/oauth/:platform", isAuthenticated, (req: any, res) => {
+  app.get("/api/oauth/:platform", isAuthenticated, async (req: any, res) => {
     const { platform } = req.params;
     const userId = req.user.claims.sub;
     
@@ -52,7 +52,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     const state = Buffer.from(JSON.stringify({ userId, platform })).toString('base64');
     
     try {
-      const authUrl = buildAuthorizationUrl(platform, state);
+      const authUrl = await buildAuthorizationUrl(platform, state, userId);
       res.redirect(authUrl);
     } catch (error) {
       res.status(400).json({ message: "Invalid platform" });
@@ -72,7 +72,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       const { userId } = JSON.parse(Buffer.from(state as string, 'base64').toString());
 
       // Exchange code for token
-      const { accessToken, refreshToken, expiresIn } = await exchangeCodeForToken(platform, code as string);
+      const { accessToken, refreshToken, expiresIn } = await exchangeCodeForToken(platform, code as string, userId);
 
       // Save connection to database
       await savePlatformConnection(userId, platform, accessToken, refreshToken, expiresIn);
@@ -145,6 +145,45 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete platform connection" });
+    }
+  });
+
+  // API Credentials / Settings
+  app.get("/api/settings/credentials", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const credentials = await storage.getApiCredentials(userId);
+      // Don't send the actual secrets to the frontend
+      const sanitized = credentials.map(cred => ({
+        id: cred.id,
+        platform: cred.platform,
+        clientId: cred.clientId ? "••••••••" : null,
+        clientSecret: cred.clientSecret ? "••••••••" : null,
+      }));
+      res.json(sanitized);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get credentials" });
+    }
+  });
+
+  app.post("/api/settings/credentials", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const credentialData = insertApiCredentialSchema.parse({ ...req.body, userId });
+      const credential = await storage.upsertApiCredential(credentialData);
+      // Don't send the actual secrets back
+      res.status(201).json({
+        id: credential.id,
+        platform: credential.platform,
+        clientId: credential.clientId ? "••••••••" : null,
+        clientSecret: credential.clientSecret ? "••••••••" : null,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid credential data", errors: error.errors });
+      } else {
+        res.status(500).json({ message: "Failed to save credentials" });
+      }
     }
   });
 

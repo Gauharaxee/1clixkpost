@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { db } from "./db";
 import { platformConnections, PlatformType } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
+import { storage } from "./storage";
 
 export interface OAuthConfig {
   clientId: string;
@@ -47,11 +48,30 @@ export const oauthConfigs: Record<string, OAuthConfig> = {
   },
 };
 
-export function buildAuthorizationUrl(platform: string, state: string): string {
-  const config = oauthConfigs[platform];
-  if (!config) {
+export async function getOAuthConfig(platform: string, userId?: string): Promise<OAuthConfig> {
+  const baseConfig = oauthConfigs[platform];
+  if (!baseConfig) {
     throw new Error(`Unknown platform: ${platform}`);
   }
+
+  // Try to get user-specific credentials from database
+  if (userId) {
+    const credential = await storage.getApiCredentialForPlatform(userId, platform);
+    if (credential && credential.clientId && credential.clientSecret) {
+      return {
+        ...baseConfig,
+        clientId: credential.clientId,
+        clientSecret: credential.clientSecret,
+      };
+    }
+  }
+
+  // Fall back to environment variables
+  return baseConfig;
+}
+
+export async function buildAuthorizationUrl(platform: string, state: string, userId?: string): Promise<string> {
+  const config = await getOAuthConfig(platform, userId);
 
   const params = new URLSearchParams({
     client_id: config.clientId,
@@ -72,12 +92,10 @@ export function buildAuthorizationUrl(platform: string, state: string): string {
 
 export async function exchangeCodeForToken(
   platform: string,
-  code: string
+  code: string,
+  userId?: string
 ): Promise<{ accessToken: string; refreshToken?: string; expiresIn?: number }> {
-  const config = oauthConfigs[platform];
-  if (!config) {
-    throw new Error(`Unknown platform: ${platform}`);
-  }
+  const config = await getOAuthConfig(platform, userId);
 
   const params = new URLSearchParams({
     client_id: config.clientId,
