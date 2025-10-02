@@ -81,6 +81,20 @@ export const apiCredentials = pgTable("api_credentials", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const botTypes = ["slack", "telegram"] as const;
+export type BotType = typeof botTypes[number];
+
+export const botCredentials = pgTable("bot_credentials", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  botType: text("bot_type", { enum: botTypes }).notNull(),
+  botToken: text("bot_token"),
+  signingSecret: text("signing_secret"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Insert schemas
 // User insert/upsert schema for Replit Auth
 // Referenced from blueprint:javascript_log_in_with_replit
@@ -132,12 +146,21 @@ export const insertApiCredentialSchema = createInsertSchema(apiCredentials).pick
   clientSecret: true,
 });
 
+export const insertBotCredentialSchema = createInsertSchema(botCredentials).pick({
+  userId: true,
+  botType: true,
+  botToken: true,
+  signingSecret: true,
+  isActive: true,
+});
+
 // Types for insert operations
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertPlatformConnection = z.infer<typeof insertPlatformConnectionSchema>;
 export type InsertPost = z.infer<typeof insertPostSchema>;
 export type InsertPostPlatform = z.infer<typeof insertPostPlatformSchema>;
 export type InsertApiCredential = z.infer<typeof insertApiCredentialSchema>;
+export type InsertBotCredential = z.infer<typeof insertBotCredentialSchema>;
 
 // Types for select operations
 export type User = typeof users.$inferSelect;
@@ -145,6 +168,7 @@ export type PlatformConnection = typeof platformConnections.$inferSelect;
 export type Post = typeof posts.$inferSelect;
 export type PostPlatform = typeof postPlatforms.$inferSelect;
 export type ApiCredential = typeof apiCredentials.$inferSelect;
+export type BotCredential = typeof botCredentials.$inferSelect;
 
 // Extended types for API responses
 export const createPostSchema = z.object({

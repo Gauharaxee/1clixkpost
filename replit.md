@@ -88,6 +88,36 @@ The application is designed to integrate with:
 - **LinkedIn API**: For professional content sharing
 - **Google My Business API**: For business profile updates
 
+### Bot Integration (Agent 3: Automation and Agents)
+The application includes integrated bots for managing posts via messaging platforms:
+
+#### Telegram Bot
+- **Package**: node-telegram-bot-api
+- **Commands**:
+  - `/start` - Initialize bot and show welcome message
+  - `/create <content>` - Create a new post draft
+  - `/list` - View recent posts
+  - `/connections` - Check connected social media platforms
+  - `/help` - Show available commands
+- **Setup**: Configure bot token from @BotFather in Settings > Bot Configuration
+
+#### Slack Bot
+- **Package**: @slack/web-api
+- **Commands**:
+  - `/postmaster-create <content>` - Create a new post draft
+  - `/postmaster-list` - View recent posts
+  - `/postmaster-connections` - Check connected platforms
+  - `/postmaster-help` - Show available commands
+- **Setup**: Create Slack app and configure bot token in Settings > Bot Configuration
+- **Note**: Requires Slack slash commands to be configured in the Slack App settings
+
+#### Bot Architecture
+- Bot credentials stored securely in database (botCredentials table)
+- Bot instances initialized on credential save
+- Webhook endpoint for Slack commands: `/api/webhooks/slack/commands`
+- Telegram uses polling for real-time message handling
+- TODO: Implement Slack signature verification for production security
+
 ### Deployment & Infrastructure
 - **Neon**: Serverless PostgreSQL database hosting
 - **File Storage**: Local file system (upgradeable to cloud storage)
